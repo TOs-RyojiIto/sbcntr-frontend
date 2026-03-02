@@ -21,8 +21,11 @@ phases:
       - echo ===== build phase =====
       - echo Docker Build started on `date`
       - echo Building the Docker image...
-      - docker buildx build -t ${APP_NAME}:latest .
+      # 【修正箇所1】 --pull と --no-cache を追加
+      - docker buildx build --pull --no-cache -t ${APP_NAME}:latest .
       - docker image tag ${APP_NAME}:latest ${ECR_REPOS_URI}:${IMAGE_TAG}
+      # 【修正箇所2】 必要に応じて latest タグも ECR に送るようにすると管理が楽です
+      - docker image tag ${APP_NAME}:latest ${ECR_REPOS_URI}:latest
       - docker image ls
       - echo Completed the ${APP_NAME} Docker image build.
 
@@ -35,6 +38,7 @@ phases:
       - aws ecr get-login-password | docker login --username AWS --password-stdin "https://${ECR_REPOS_DOMAIN}"
       - echo Docker Image ${APP_NAME} pushing to ECR on `date`
       - docker image push ${ECR_REPOS_URI}:${IMAGE_TAG}
+      - docker image push ${ECR_REPOS_URI}:latest  # 追加
       - echo '[{"name":"app","imageUri":"'$ECR_REPOS_URI':'$IMAGE_TAG'"}]'  > imagedefinitions.json
 
 artifacts:
