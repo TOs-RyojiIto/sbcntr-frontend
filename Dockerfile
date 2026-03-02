@@ -1,13 +1,15 @@
 # === builder: 依存関係生成用 ===
-FROM public.ecr.aws/docker/library/node:22-slim AS builder
+# al2023 (Amazon Linux 2023) ベースに変更
+FROM public.ecr.aws/docker/library/node:22-al2023 AS builder
 WORKDIR /app
-# OSパッケージを最新化し、ビルドに必要なツールをインストール
-RUN apt-get update && apt-get upgrade -y && apt-get install -y \
+
+# Amazon Linux なので apt ではなく dnf を使います
+RUN dnf update -y && dnf install -y \
     python3 \
     make \
-    g++ \
+    gcc-c++ \
     procps \
-    && rm -rf /var/lib/apt/lists/*
+    && dnf clean all
 
 RUN corepack enable && corepack prepare pnpm@10.12.4 --activate
 COPY package.json pnpm-lock.yaml ./
@@ -16,23 +18,21 @@ COPY . .
 RUN pnpm build
 
 # === prod-deps: 本番用依存関係のみ抽出 ===
-FROM public.ecr.aws/docker/library/node:22-slim AS prod-deps
+FROM public.ecr.aws/docker/library/node:22-al2023 AS prod-deps
 WORKDIR /app
-# 念のためここでもアップグレード（一貫性のため）
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+RUN dnf update -y && dnf clean all
 RUN corepack enable && corepack prepare pnpm@10.12.4 --activate
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --prod --frozen-lockfile
 
 # === runner: 最終イメージ===
-FROM public.ecr.aws/docker/library/node:22-slim AS runner
+FROM public.ecr.aws/docker/library/node:22-al2023 AS runner
 ENV NODE_ENV=production
 ENV PORT=8080
 WORKDIR /app
 
-# 【重要】ここが ECR スキャンでチェックされる最終イメージのベースです。
-# OpenSSL の脆弱性を消すために OS パッケージを最新にします。
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+# 【最重要】AWS公式イメージに対して dnf update を実行
+RUN dnf update -y && dnf clean all
 
 COPY --chown=node:node package.json pnpm-lock.yaml /app/
 COPY --from=prod-deps --chown=node:node /app/node_modules /app/node_modules
